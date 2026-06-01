@@ -35,3 +35,41 @@
 - 对于特别极端的情况（如某些 `z_i - m` 仍很小导致指数下溢），PyTorch 会利用 `math.log1p` 等函数进一步提高精度，但核心稳定机制就是 Log-Sum-Exp 技巧。
 
 总之，**通过减去最大值再计算 log-sum-exp**，PyTorch 的 `CrossEntropyLoss` 从根本上解决了 softmax 中的指数爆炸问题。
+
+
+# Q:如果使用 pytorch 中的 CrossEntropyLoss，最终所得模型输出不是规范的概率输出？
+
+是的，最终训练得到的网络输出值仍然是**未规范化的 logits**。如果需要调用模型输出的概率分布，则需要手动对 logits 应用 softmax 函数。
+
+### 1. **网络输出未规范化 logits**
+在代码中，模型的定义如下：
+```python
+net = nn.Sequential(nn.Flatten(), nn.Linear(784, 10))
+```
+这里的最后一层是一个全连接层 `nn.Linear`，它的输出是未经过 softmax 规范化的 logits。这是因为：
+- 在训练过程中，`nn.CrossEntropyLoss` 接受未规范化的 logits 作为输入，并在内部完成 softmax 和交叉熵的计算。
+- 因此，模型本身并不会对输出进行 softmax 处理。
+
+### 2. **手动计算 softmax**
+如果需要从模型中获取概率分布（例如用于预测或评估），需要手动对 logits 应用 softmax 函数。可以使用 PyTorch 提供的 `torch.nn.functional.softmax` 函数来完成这一操作。例如：
+```python
+import torch.nn.functional as F
+
+# 假设 y_hat 是模型的输出
+y_hat = net(X)  # 未规范化的 logits
+probabilities = F.softmax(y_hat, dim=1)  # 计算概率分布
+```
+这里的 `dim=1` 表示对每一行（即每个样本）的 logits 进行 softmax 计算。
+
+### 3. **为什么不直接在网络中加入 softmax**
+通常不会在网络定义中直接加入 softmax，原因如下：
+- **数值稳定性**：在训练过程中，`nn.CrossEntropyLoss` 已经结合了 softmax 和交叉熵的计算，避免了显式计算 softmax 的数值稳定性问题。
+- **灵活性**：在推理阶段，是否需要 softmax 取决于具体需求。例如，有时只需要比较 logits 的大小来确定类别，而不需要概率分布。
+
+### 4. **总结**
+- 训练得到的网络输出值是未规范化的 logits。
+- 如果需要概率分布，需要手动对 logits 应用 softmax 函数：
+  ```python
+  probabilities = F.softmax(y_hat, dim=1)
+  ```
+- 不在网络中直接加入 softmax 是为了数值稳定性和灵活性。
